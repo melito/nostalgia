@@ -93,12 +93,13 @@ impl Storage {
         }
     }
 
-    fn query<'txn, T: Storable + Retrievable>(&self) -> Result<RoQuery, lmdb::Error> {
+    fn query<'txn, T: Storable + Retrievable>(&self) -> Result<RoQuery<T>, lmdb::Error> {
         let db = self.db(T::db_name())?;
 
         let txn = self.env.begin_ro_txn()?;
 
         Ok(RoQuery {
+            phantom: std::marker::PhantomData::<T>,
             db: db,
             txn: txn,
             iter: None,
@@ -106,14 +107,15 @@ impl Storage {
     }
 }
 
-struct RoQuery<'txn> {
+struct RoQuery<'txn, T> {
+    phantom: std::marker::PhantomData<T>,
     db: lmdb::Database,
     txn: lmdb::RoTransaction<'txn>,
     iter: Option<lmdb::Iter<'txn>>,
 }
 
-impl<'txn> Iterator for RoQuery<'txn> {
-    type Item = String;
+impl<'txn, T: 'txn + Retrievable> Iterator for RoQuery<'txn, T> {
+    type Item = T;
 
     fn next(&mut self) -> Option<Self::Item> {
         if let None = self.iter {
@@ -123,8 +125,10 @@ impl<'txn> Iterator for RoQuery<'txn> {
 
         if let Some(iter) = &mut self.iter {
             if let Some(record) = iter.next() {
-                println!("{:?}", record);
-                return Some(String::new());
+                return match T::from_binary(record.1) {
+                    Ok(record) => Some(record),
+                    Err(_) => None,
+                };
             }
         }
 
