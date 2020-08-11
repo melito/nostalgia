@@ -4,51 +4,33 @@ use lmdb::{Cursor, Database, Environment, Transaction};
 use std::collections::HashMap;
 use std::fs::create_dir_all;
 use std::path::PathBuf;
-use std::string::String;
 
-/// When a type conforms to this trait it allows it to be stored and retrieved from the database
-pub trait Record: serde::Serialize + serde::de::DeserializeOwned + std::marker::Sized {
-    /// Used to determine the key to use to associate with the object in the database
-    fn key(&self) -> Vec<u8>;
-
-    /// The database name to save a record in.  Defaults to 'default'
-    fn db_name() -> &'static str {
-        "default"
-    }
-
-    /// Serializes the record to binary
-    fn to_binary(&self) -> Result<Vec<u8>, bincode::Error> {
-        bincode::serialize(self)
-    }
-
-    /// Deserializes a record from binary
-    fn from_binary(bytes: &[u8]) -> Result<Self, bincode::Error> {
-        bincode::deserialize(bytes)
-    }
-}
+mod record;
+use record::Record;
 
 /// Storage provides a simple interface for interacting with databases
 #[derive(Debug)]
 pub struct Storage {
     env: Environment,
-    path: String,
+    path: PathBuf,
     dbs: HashMap<&'static str, lmdb::Database>,
 }
 
 impl Storage {
     /// Create a new database
     /// Accepts a str as an argument.  If directory does not exist it will create it
-    pub fn new<P: Into<PathBuf> + Copy>(path: P) -> Result<Storage, Error> {
+    pub fn new<P: Into<PathBuf>>(path: P) -> Result<Storage, Error> {
         let mut builder = lmdb::Environment::new();
         builder.set_max_dbs(2048);
         builder.set_map_size(256 * 1024 * 1024);
 
-        let p = path.into();
+        let p = &path.into();
         create_dir_all(p)?;
-        let env = builder.open(&path.into()).unwrap();
+        let env = builder.open(p).unwrap();
+
         Ok(Storage {
             env: env,
-            path: path.into().to_str().unwrap().to_string(),
+            path: p.to_path_buf(),
             dbs: HashMap::new(),
         })
     }
@@ -205,8 +187,15 @@ mod tests {
     }
 
     #[test]
-    fn test_that_we_can_init_the_db() {
-        let mut storage = Storage::new("/tmp/db").expect("Could not open db storage");
+    fn test_that_we_can_create_storage_using_differt_types_of_input() {
+        let _ = Storage::new(std::env::temp_dir()).expect("Could not create storage");
+        let _ = Storage::new("/tmp/db").expect("Could not create storage");
+        let _ = Storage::new(String::from("/tmp/db2")).expect("Could not create storage");
+    }
+
+    #[test]
+    fn test_that_we_keep_track_of_db_references() {
+        let mut storage = Storage::new(std::env::temp_dir()).expect("Could not open db storage");
         assert_eq!(0, storage.dbs.len());
 
         let p: Person = Faker.fake();
@@ -221,7 +210,7 @@ mod tests {
 
     #[test]
     fn test_that_we_can_insert_and_get_records_with_a_storage_object() {
-        let mut storage = Storage::new("/tmp/db").expect("Could not open db storage");
+        let mut storage = Storage::new(std::env::temp_dir()).expect("Could not open db storage");
         clear_db(&mut storage);
 
         let person: Person = Faker.fake();
@@ -249,7 +238,7 @@ mod tests {
             });
         }
 
-        let mut storage = Storage::new("/tmp/db").expect("Could not open db storage");
+        let mut storage = Storage::new(std::env::temp_dir()).expect("Could not open db storage");
         clear_db(&mut storage);
 
         let _ = storage.batch_save(records).expect("Could not save records");
