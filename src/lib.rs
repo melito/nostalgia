@@ -33,6 +33,8 @@ pub struct Storage {
 }
 
 impl Storage {
+    /// Create a new database
+    /// Accepts a str as an argument.  If directory does not exist it will create it
     fn new<P: Into<PathBuf> + Copy>(path: P) -> Result<Storage, Error> {
         let mut builder = lmdb::Environment::new();
         builder.set_max_dbs(2048);
@@ -48,16 +50,20 @@ impl Storage {
         })
     }
 
-    fn db(&self, db_name: &'static str) -> Result<Database, lmdb::Error> {
+    fn db(&mut self, db_name: &'static str) -> Result<Database, lmdb::Error> {
         match self.dbs.get(db_name) {
             Some(db) => Ok(*db),
-            None => self
-                .env
-                .create_db(Some(db_name), lmdb::DatabaseFlags::empty()),
+            None => {
+                let db = self
+                    .env
+                    .create_db(Some(db_name), lmdb::DatabaseFlags::empty())?;
+                self.dbs.insert(db_name, db);
+                Ok(db)
+            }
         }
     }
 
-    fn save<T: Storable>(&self, record: &T) -> Result<(), lmdb::Error> {
+    fn save<T: Storable>(&mut self, record: &T) -> Result<(), lmdb::Error> {
         let db = self.db(T::db_name())?;
 
         let mut tx = self.env.begin_rw_txn()?;
@@ -67,7 +73,7 @@ impl Storage {
         tx.commit()
     }
 
-    fn batch_save<T: Storable>(&self, records: Vec<T>) -> Result<(), lmdb::Error> {
+    fn batch_save<T: Storable>(&mut self, records: Vec<T>) -> Result<(), lmdb::Error> {
         let db = self.db(T::db_name())?;
 
         let mut tx = self.env.begin_rw_txn()?;
@@ -80,7 +86,7 @@ impl Storage {
         tx.commit()
     }
 
-    fn get<T: Storable + Retrievable>(&self, key: &[u8]) -> Result<Option<T>, lmdb::Error> {
+    fn get<T: Storable + Retrievable>(&mut self, key: &[u8]) -> Result<Option<T>, lmdb::Error> {
         let db = self.db(T::db_name())?;
 
         let txn = self.env.begin_ro_txn()?;
@@ -93,7 +99,7 @@ impl Storage {
         }
     }
 
-    fn query<'txn, T: Storable + Retrievable>(&self) -> Result<RoQuery<T>, lmdb::Error> {
+    fn query<'txn, T: Storable + Retrievable>(&mut self) -> Result<RoQuery<T>, lmdb::Error> {
         let db = self.db(T::db_name())?;
 
         let txn = self.env.begin_ro_txn()?;
@@ -104,6 +110,26 @@ impl Storage {
             txn: txn,
             iter: None,
         })
+    }
+
+    fn truncate<T: Storable>(&mut self) -> Result<(), lmdb::Error> {
+        let db = self.db(T::db_name())?;
+        let mut txn = self.env.begin_rw_txn()?;
+        txn.clear_db(db)?;
+        txn.commit()?;
+        Ok(())
+    }
+
+    fn drop<T: Storable>(&mut self) -> Result<(), lmdb::Error> {
+        let db = self.db(T::db_name())?;
+        let mut txn = self.env.begin_rw_txn()?;
+        unsafe {
+            txn.drop_db(db)?;
+        }
+        txn.commit()?;
+
+        self.dbs.remove(T::db_name());
+        Ok(())
     }
 }
 
@@ -144,7 +170,7 @@ mod tests {
 
     #[derive(Debug, Serialize, Deserialize, Dummy, PartialEq)]
     struct Person {
-        #[dummy(faker = "1000..2000")]
+        #[dummy(faker = "1..1000")]
         id: u32,
 
         #[dummy(faker = "Name()")]
@@ -163,14 +189,32 @@ mod tests {
 
     impl Retrievable for Person {}
 
+    fn clear_db(storage: &mut Storage) {
+        match storage.truncate::<Person>() {
+            Ok(_) => assert_eq!(0, 0),
+            Err(_) => assert_ne!(0, 0, "Could not truncate Person db"),
+        }
+    }
+
     #[test]
     fn test_that_we_can_init_the_db() {
-        let _ = Storage::new("/tmp/db").expect("Could not open db storage");
+        let mut storage = Storage::new("/tmp/db").expect("Could not open db storage");
+        assert_eq!(0, storage.dbs.len());
+
+        let p: Person = Faker.fake();
+        storage.save(&p).expect("Could not save record");
+        assert_eq!(1, storage.dbs.len());
+
+        match storage.drop::<Person>() {
+            Ok(_) => assert_eq!(0, storage.dbs.len()),
+            Err(_) => assert_ne!(0, 0, "Could not drop database"),
+        }
     }
 
     #[test]
     fn test_that_we_can_insert_and_get_records_with_a_storage_object() {
-        let storage = Storage::new("/tmp/db").expect("Could not open db storage");
+        let mut storage = Storage::new("/tmp/db").expect("Could not open db storage");
+        clear_db(&mut storage);
 
         let person: Person = Faker.fake();
 
@@ -183,22 +227,31 @@ mod tests {
             Ok(Some(pn)) => assert_eq!(pn, person),
             Ok(None) => assert_ne!(0, 0, "Didn't get a result back"),
             Err(_) => assert_ne!(0, 0, "Got an error"),
-        }
+        };
     }
 
     #[test]
     fn test_that_we_can_batch_insert_records_and_then_interate() {
+        let records_to_create: u32 = 10;
         let mut records: Vec<Person> = vec![];
-        for _ in 0..10000 {
-            records.push(Faker.fake());
+        for idx in 0..records_to_create {
+            records.push(Person {
+                id: idx,
+                name: Name().fake(),
+            });
         }
 
-        let storage = Storage::new("/tmp/db").expect("Could not open db storage");
+        let mut storage = Storage::new("/tmp/db").expect("Could not open db storage");
+        clear_db(&mut storage);
+
         let _ = storage.batch_save(records).expect("Could not save records");
         let person_iterator = storage.query::<Person>().unwrap();
 
-        for person in person_iterator {
-            println!("{:?}", person);
+        let mut cnt = 0;
+        for _ in person_iterator {
+            cnt += 1;
         }
+
+        assert_eq!(records_to_create, cnt);
     }
 }
