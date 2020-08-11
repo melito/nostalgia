@@ -7,7 +7,7 @@ use std::fs::create_dir_all;
 use std::path::PathBuf;
 use std::string::String;
 
-trait Storable: serde::Serialize + std::marker::Sized {
+trait Record: serde::Serialize + serde::de::DeserializeOwned + std::marker::Sized {
     fn key(&self) -> Vec<u8>;
 
     fn db_name() -> &'static str {
@@ -17,9 +17,7 @@ trait Storable: serde::Serialize + std::marker::Sized {
     fn to_binary(&self) -> Result<Vec<u8>, bincode::Error> {
         bincode::serialize(self)
     }
-}
 
-trait Retrievable: serde::de::DeserializeOwned {
     fn from_binary(bytes: &[u8]) -> Result<Self, bincode::Error> {
         bincode::deserialize(bytes)
     }
@@ -63,30 +61,30 @@ impl Storage {
         }
     }
 
-    fn save<T: Storable>(&mut self, record: &T) -> Result<(), lmdb::Error> {
+    fn save<T: Record>(&mut self, record: &T) -> Result<(), lmdb::Error> {
         let db = self.db(T::db_name())?;
 
         let mut tx = self.env.begin_rw_txn()?;
-        let bytes = Storable::to_binary(record).expect("Could not serialize");
+        let bytes = T::to_binary(record).expect("Could not serialize");
         tx.put(db, &record.key(), &bytes, lmdb::WriteFlags::empty())?;
 
         tx.commit()
     }
 
-    fn batch_save<T: Storable>(&mut self, records: Vec<T>) -> Result<(), lmdb::Error> {
+    fn batch_save<T: Record>(&mut self, records: Vec<T>) -> Result<(), lmdb::Error> {
         let db = self.db(T::db_name())?;
 
         let mut tx = self.env.begin_rw_txn()?;
 
         for record in records {
-            let bytes = Storable::to_binary(&record).expect("Could not serialize");
+            let bytes = T::to_binary(&record).expect("Could not serialize");
             tx.put(db, &record.key(), &bytes, lmdb::WriteFlags::empty())?;
         }
 
         tx.commit()
     }
 
-    fn get<T: Storable + Retrievable>(&mut self, key: &[u8]) -> Result<Option<T>, lmdb::Error> {
+    fn get<T: Record>(&mut self, key: &[u8]) -> Result<Option<T>, lmdb::Error> {
         let db = self.db(T::db_name())?;
 
         let txn = self.env.begin_ro_txn()?;
@@ -99,7 +97,7 @@ impl Storage {
         }
     }
 
-    fn query<'txn, T: Storable + Retrievable>(&mut self) -> Result<RoQuery<T>, lmdb::Error> {
+    fn query<'txn, T: Record>(&mut self) -> Result<RoQuery<T>, lmdb::Error> {
         let db = self.db(T::db_name())?;
 
         let txn = self.env.begin_ro_txn()?;
@@ -112,7 +110,7 @@ impl Storage {
         })
     }
 
-    fn truncate<T: Storable>(&mut self) -> Result<(), lmdb::Error> {
+    fn truncate<T: Record>(&mut self) -> Result<(), lmdb::Error> {
         let db = self.db(T::db_name())?;
         let mut txn = self.env.begin_rw_txn()?;
         txn.clear_db(db)?;
@@ -120,7 +118,7 @@ impl Storage {
         Ok(())
     }
 
-    fn drop<T: Storable>(&mut self) -> Result<(), lmdb::Error> {
+    fn drop<T: Record>(&mut self) -> Result<(), lmdb::Error> {
         let db = self.db(T::db_name())?;
         let mut txn = self.env.begin_rw_txn()?;
         unsafe {
@@ -140,7 +138,7 @@ struct RoQuery<'txn, T> {
     iter: Option<lmdb::Iter<'txn>>,
 }
 
-impl<'txn, T: 'txn + Retrievable> Iterator for RoQuery<'txn, T> {
+impl<'txn, T: 'txn + Record> Iterator for RoQuery<'txn, T> {
     type Item = T;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -177,7 +175,7 @@ mod tests {
         name: String,
     }
 
-    impl Storable for Person {
+    impl Record for Person {
         fn key(&self) -> Vec<u8> {
             self.id.to_be_bytes().to_vec()
         }
@@ -186,8 +184,6 @@ mod tests {
             "Person"
         }
     }
-
-    impl Retrievable for Person {}
 
     fn clear_db(storage: &mut Storage) {
         match storage.truncate::<Person>() {
@@ -232,7 +228,7 @@ mod tests {
 
     #[test]
     fn test_that_we_can_batch_insert_records_and_then_interate() {
-        let records_to_create: u32 = 10;
+        let records_to_create: u32 = 10000;
         let mut records: Vec<Person> = vec![];
         for idx in 0..records_to_create {
             records.push(Person {
