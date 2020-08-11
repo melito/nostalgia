@@ -1,28 +1,33 @@
 use failure::Error;
 use lmdb;
 use lmdb::{Cursor, Database, Environment, Transaction};
-use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs::create_dir_all;
 use std::path::PathBuf;
 use std::string::String;
 
-trait Record: serde::Serialize + serde::de::DeserializeOwned + std::marker::Sized {
+/// When a type conforms to this trait it allows it to be stored and retrieved from the database
+pub trait Record: serde::Serialize + serde::de::DeserializeOwned + std::marker::Sized {
+    /// Used to determine the key to use to associate with the object in the database
     fn key(&self) -> Vec<u8>;
 
+    /// The database name to save a record in.  Defaults to 'default'
     fn db_name() -> &'static str {
         "default"
     }
 
+    /// Serializes the record to binary
     fn to_binary(&self) -> Result<Vec<u8>, bincode::Error> {
         bincode::serialize(self)
     }
 
+    /// Deserializes a record from binary
     fn from_binary(bytes: &[u8]) -> Result<Self, bincode::Error> {
         bincode::deserialize(bytes)
     }
 }
 
+/// Storage provides a simple interface for interacting with databases
 #[derive(Debug)]
 pub struct Storage {
     env: Environment,
@@ -33,7 +38,7 @@ pub struct Storage {
 impl Storage {
     /// Create a new database
     /// Accepts a str as an argument.  If directory does not exist it will create it
-    fn new<P: Into<PathBuf> + Copy>(path: P) -> Result<Storage, Error> {
+    pub fn new<P: Into<PathBuf> + Copy>(path: P) -> Result<Storage, Error> {
         let mut builder = lmdb::Environment::new();
         builder.set_max_dbs(2048);
         builder.set_map_size(256 * 1024 * 1024);
@@ -61,7 +66,8 @@ impl Storage {
         }
     }
 
-    fn save<T: Record>(&mut self, record: &T) -> Result<(), lmdb::Error> {
+    /// Saves a record to the corresponding type's database
+    pub fn save<T: Record>(&mut self, record: &T) -> Result<(), lmdb::Error> {
         let db = self.db(T::db_name())?;
 
         let mut tx = self.env.begin_rw_txn()?;
@@ -71,7 +77,8 @@ impl Storage {
         tx.commit()
     }
 
-    fn batch_save<T: Record>(&mut self, records: Vec<T>) -> Result<(), lmdb::Error> {
+    /// Saves a group of records to the internal type's database
+    pub fn batch_save<T: Record>(&mut self, records: Vec<T>) -> Result<(), lmdb::Error> {
         let db = self.db(T::db_name())?;
 
         let mut tx = self.env.begin_rw_txn()?;
@@ -84,7 +91,8 @@ impl Storage {
         tx.commit()
     }
 
-    fn get<T: Record>(&mut self, key: &[u8]) -> Result<Option<T>, lmdb::Error> {
+    /// Retrieves a record from the database
+    pub fn get<T: Record>(&mut self, key: &[u8]) -> Result<Option<T>, lmdb::Error> {
         let db = self.db(T::db_name())?;
 
         let txn = self.env.begin_ro_txn()?;
@@ -97,7 +105,8 @@ impl Storage {
         }
     }
 
-    fn query<'txn, T: Record>(&mut self) -> Result<RoQuery<T>, lmdb::Error> {
+    /// Performs a query on the database and returns an iterator for accessing results
+    pub fn query<'txn, T: Record>(&mut self) -> Result<RoQuery<T>, lmdb::Error> {
         let db = self.db(T::db_name())?;
 
         let txn = self.env.begin_ro_txn()?;
@@ -110,7 +119,8 @@ impl Storage {
         })
     }
 
-    fn truncate<T: Record>(&mut self) -> Result<(), lmdb::Error> {
+    /// Removes all records in the corresponding type's database
+    pub fn truncate<T: Record>(&mut self) -> Result<(), lmdb::Error> {
         let db = self.db(T::db_name())?;
         let mut txn = self.env.begin_rw_txn()?;
         txn.clear_db(db)?;
@@ -118,7 +128,8 @@ impl Storage {
         Ok(())
     }
 
-    fn drop<T: Record>(&mut self) -> Result<(), lmdb::Error> {
+    /// Completely removes the database for a specific type
+    pub fn drop<T: Record>(&mut self) -> Result<(), lmdb::Error> {
         let db = self.db(T::db_name())?;
         let mut txn = self.env.begin_rw_txn()?;
         unsafe {
@@ -131,7 +142,7 @@ impl Storage {
     }
 }
 
-struct RoQuery<'txn, T> {
+pub struct RoQuery<'txn, T> {
     phantom: std::marker::PhantomData<T>,
     db: lmdb::Database,
     txn: lmdb::RoTransaction<'txn>,
@@ -165,6 +176,7 @@ mod tests {
     use super::*;
     use fake::faker::name::en::Name;
     use fake::{Dummy, Fake, Faker};
+    use serde::{Deserialize, Serialize};
 
     #[derive(Debug, Serialize, Deserialize, Dummy, PartialEq)]
     struct Person {
