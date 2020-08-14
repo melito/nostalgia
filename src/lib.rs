@@ -5,11 +5,13 @@ use std::collections::HashMap;
 use std::fs::create_dir_all;
 use std::path::PathBuf;
 
-mod record;
+mod query;
+pub mod record;
+
+use query::RoQuery;
 use record::Record;
 
 /// Storage provides a simple interface for interacting with databases
-#[derive(Debug)]
 pub struct Storage {
     env: Environment,
     path: PathBuf,
@@ -17,8 +19,36 @@ pub struct Storage {
 }
 
 impl Storage {
-    /// Create a new database
-    /// Accepts a str as an argument.  If directory does not exist it will create it
+    /// Creates or Opens a storage directory for managing databases.
+    ///
+    /// LMDB storage expects path to be a directory.
+    ///
+    /// If the path does not exist it will be created.
+    ///
+    /// # Arguments
+    ///
+    /// * `path` - The path where the database should be created / opened
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use flashback::Storage;
+    ///
+    /// fn main() -> Result<(), failure::Error> {
+    ///     // Into trait allows for str argument
+    ///     let a = Storage::new("/tmp/db")?;
+    ///
+    ///     // Also allows for a std::string::String
+    ///     let b = Storage::new(String::from("/tmp/db2"))?;
+    ///
+    ///     // PathBuf's also work
+    ///     let c = Storage::new(std::env::temp_dir())?;
+    ///
+    ///     Ok(())
+    /// }
+    ///
+    /// ```
+    ///
     pub fn new<P: Into<PathBuf>>(path: P) -> Result<Storage, Error> {
         let mut builder = lmdb::Environment::new();
         builder.set_max_dbs(2048);
@@ -48,7 +78,44 @@ impl Storage {
         }
     }
 
-    /// Saves a record to the corresponding type's database
+    /// Serializes and Saves a record in one of the databases contained in storage.
+    ///
+    /// Input should implement the Record trait.  The database the record is saved to and the key
+    /// used is configured using that trait.
+    ///
+    /// # Arguments
+    /// * `record` - A type that implements the Record trait.
+    ///
+    /// # Examples
+    /// ```
+    /// use flashback::{Storage, record::Record};
+    /// use serde::{Serialize, Deserialize};
+    ///
+    /// #[derive(Serialize, Deserialize)]
+    /// struct Place {
+    ///   id: usize,
+    ///   name: std::string::String
+    /// }
+    ///
+    /// impl Record for Place {
+    ///    fn key(&self) -> Vec<u8> {
+    ///        self.id.to_be_bytes().to_vec()
+    ///    }
+    ///
+    ///    fn db_name() -> &'static str {
+    ///        "Place"
+    ///    }
+    /// }
+    ///
+    /// fn main() -> Result<(), failure::Error> {
+    ///     let mut storage = Storage::new("/tmp/db")?;
+    ///     let place = Place { id: 1, name: "Vienna".to_string() };
+    ///     storage.save(&place)?;
+    ///
+    ///     Ok(())
+    /// }
+    /// ```
+    ///
     pub fn save<T: Record>(&mut self, record: &T) -> Result<(), lmdb::Error> {
         let db = self.db(T::db_name())?;
 
@@ -124,35 +191,6 @@ impl Storage {
     }
 }
 
-pub struct RoQuery<'txn, T> {
-    phantom: std::marker::PhantomData<T>,
-    db: lmdb::Database,
-    txn: lmdb::RoTransaction<'txn>,
-    iter: Option<lmdb::Iter<'txn>>,
-}
-
-impl<'txn, T: 'txn + Record> Iterator for RoQuery<'txn, T> {
-    type Item = T;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        if let None = self.iter {
-            let mut cursor = self.txn.open_ro_cursor(self.db).unwrap();
-            self.iter = Some(cursor.iter());
-        }
-
-        if let Some(iter) = &mut self.iter {
-            if let Some(record) = iter.next() {
-                return match T::from_binary(record.1) {
-                    Ok(record) => Some(record),
-                    Err(_) => None,
-                };
-            }
-        }
-
-        None
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -184,13 +222,6 @@ mod tests {
             Ok(_) => assert_eq!(0, 0),
             Err(_) => assert_ne!(0, 0, "Could not truncate Person db"),
         }
-    }
-
-    #[test]
-    fn test_that_we_can_create_storage_using_differt_types_of_input() {
-        let _ = Storage::new(std::env::temp_dir()).expect("Could not create storage");
-        let _ = Storage::new("/tmp/db").expect("Could not create storage");
-        let _ = Storage::new(String::from("/tmp/db2")).expect("Could not create storage");
     }
 
     #[test]
@@ -250,5 +281,12 @@ mod tests {
         }
 
         assert_eq!(records_to_create, cnt);
+
+        let pi = storage.query::<Person>().unwrap();
+        let x = pi.filter(|i| i.name == "Jerry");
+
+        for y in x {
+            println!("{:?}", y);
+        }
     }
 }
