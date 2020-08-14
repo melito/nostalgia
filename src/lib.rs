@@ -32,7 +32,7 @@ impl Storage {
     /// # Examples
     ///
     /// ```
-    /// use flashback::Storage;
+    /// use nostalgia::Storage;
     ///
     /// fn main() -> Result<(), failure::Error> {
     ///     // Into trait allows for str argument
@@ -88,7 +88,7 @@ impl Storage {
     ///
     /// # Examples
     /// ```
-    /// use flashback::{Storage, record::Record};
+    /// use nostalgia::{Storage, record::Record};
     /// use serde::{Serialize, Deserialize};
     ///
     /// #[derive(Serialize, Deserialize)]
@@ -127,7 +127,49 @@ impl Storage {
     }
 
     /// Saves a group of records to the internal type's database
-    pub fn batch_save<T: Record>(&mut self, records: Vec<T>) -> Result<(), lmdb::Error> {
+    ///
+    ///
+    /// # Arguments
+    /// * `records` - A Vec that contains objects that implement Record trait
+    ///
+    /// # Examples
+    /// ```
+    /// use nostalgia::{Storage, record::Record};
+    /// use serde::{Serialize, Deserialize};
+    ///
+    /// #[derive(Serialize, Deserialize)]
+    /// struct Place {
+    ///   id: usize,
+    ///   name: std::string::String
+    /// }
+    ///
+    /// impl Record for Place {
+    ///    fn key(&self) -> Vec<u8> {
+    ///        self.id.to_be_bytes().to_vec()
+    ///    }
+    ///
+    ///    fn db_name() -> &'static str {
+    ///        "Place"
+    ///    }
+    /// }
+    ///
+    /// fn main() -> Result<(), failure::Error> {
+    ///     let mut storage = Storage::new("/tmp/db")?;
+    ///
+    ///     let records = vec![
+    ///       Place { id: 1, name: "Vienna".to_string() },
+    ///       Place { id: 2, name: "Paris".to_string() },
+    ///       Place { id: 3, name: "Istanbul".to_string() },
+    ///       Place { id: 4, name: "London".to_string() },
+    ///     ];
+    ///
+    ///     storage.save_batch(records)?;
+    ///
+    ///     Ok(())
+    /// }
+    /// ```
+    ///
+    pub fn save_batch<T: Record>(&mut self, records: Vec<T>) -> Result<(), lmdb::Error> {
         let db = self.db(T::db_name())?;
 
         let mut tx = self.env.begin_rw_txn()?;
@@ -272,7 +314,7 @@ mod tests {
         let mut storage = Storage::new(std::env::temp_dir()).expect("Could not open db storage");
         clear_db(&mut storage);
 
-        let _ = storage.batch_save(records).expect("Could not save records");
+        let _ = storage.save_batch(records).expect("Could not save records");
         let person_iterator = storage.query::<Person>().unwrap();
 
         let mut cnt = 0;

@@ -1,6 +1,6 @@
 [package]
-name = "flashback"
-version = "0.1.0"
+name = "nostalgia"
+version = "0.0.1"
 authors = ["melgray"]
 edition = "2018"
 
