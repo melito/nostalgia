@@ -18,7 +18,8 @@ This project is very much still a work in progress and currently only supports t
   * Pluggable serialization models
 
   * Ability to force struct layout conformity for compatibility with databases created in other languages.
-    For now marking a struct with repr(c) should work
+
+    For now marking a struct with `#[repr(C)]` should work
 
   * Ability to configure storage backends in a simple manner
   
