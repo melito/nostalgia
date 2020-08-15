@@ -60,7 +60,7 @@ impl Storage {
         let env = builder.open(p).unwrap();
 
         Ok(Storage {
-            env: env,
+            env,
             path: p.to_path_buf(),
             dbs: HashMap::new(),
         })
@@ -182,9 +182,46 @@ impl Storage {
     }
 
     /// Retrieves a record from the database
+    ///
+    /// # Arguments
+    /// * `key` - A Vec of usigned 8bit integers representing the key.  Will make this more sugar-y
+    /// eventually
+    ///
+    /// # Examples
+    /// ```
+    /// use nostalgia::{Storage, record::Record};
+    /// use serde::{Serialize, Deserialize};
+    ///
+    /// #[derive(Serialize, Deserialize)]
+    /// struct Place {
+    ///   id: usize,
+    ///   name: std::string::String
+    /// }
+    ///
+    /// impl Record for Place {
+    ///    fn key(&self) -> Vec<u8> {
+    ///        self.id.to_be_bytes().to_vec()
+    ///    }
+    ///
+    ///    fn db_name() -> &'static str {
+    ///        "Place"
+    ///    }
+    /// }
+    ///
+    /// fn main() -> Result<(), failure::Error> {
+    ///     let mut storage = Storage::new("/tmp/db")?;
+    ///
+    ///     let paris: Place = storage.get(&2_usize.to_be_bytes().to_vec())
+    ///     .expect("Error fetching")
+    ///     .expect("Empty record");
+    ///
+    ///     assert_eq!("Paris", paris.name);
+    ///
+    ///     Ok(())
+    /// }
+    /// ```
     pub fn get<T: Record>(&mut self, key: &[u8]) -> Result<Option<T>, lmdb::Error> {
         let db = self.db(T::db_name())?;
-
         let txn = self.env.begin_ro_txn()?;
         let cursor = txn.open_ro_cursor(db)?;
         let result = cursor.get(Some(key), None, 15)?;
@@ -195,6 +232,42 @@ impl Storage {
         }
     }
 
+    /// Deletes a record from the database
+    ///
+    /// # Arguments
+    /// * `record` - A type that implements the Record trait.
+    ///
+    /// # Examples
+    /// ```
+    /// use nostalgia::{Storage, record::Record};
+    /// use serde::{Serialize, Deserialize};
+    ///
+    /// #[derive(Serialize, Deserialize)]
+    /// struct Place {
+    ///   id: usize,
+    ///   name: std::string::String
+    /// }
+    ///
+    /// impl Record for Place {
+    ///    fn key(&self) -> Vec<u8> {
+    ///        self.id.to_be_bytes().to_vec()
+    ///    }
+    ///
+    ///    fn db_name() -> &'static str {
+    ///        "Place"
+    ///    }
+    /// }
+    ///
+    /// fn main() -> Result<(), failure::Error> {
+    ///     let mut storage = Storage::new("/tmp/db")?;
+    ///     let place = Place { id: 1, name: "Vienna".to_string() };
+    ///     storage.save(&place)?;
+    ///
+    ///     storage.delete(&place)?;
+    ///
+    ///     Ok(())
+    /// }
+    /// ```
     pub fn delete<T: Record>(&mut self, record: &T) -> Result<(), lmdb::Error> {
         let db = self.db(T::db_name())?;
         let mut tx = self.env.begin_rw_txn()?;
@@ -202,7 +275,40 @@ impl Storage {
         tx.commit()
     }
 
-    /// Performs a query on the database and returns an iterator for accessing results
+    /// Returns an RoQuery object that allows you to Iterate over all records in a database.
+    ///
+    /// # Examples
+    /// ```
+    /// use nostalgia::{Storage, record::Record};
+    /// use serde::{Serialize, Deserialize};
+    ///
+    /// #[derive(Serialize, Deserialize)]
+    /// struct Place {
+    ///   id: usize,
+    ///   name: std::string::String
+    /// }
+    ///
+    /// impl Record for Place {
+    ///    fn key(&self) -> Vec<u8> {
+    ///        self.id.to_be_bytes().to_vec()
+    ///    }
+    ///
+    ///    fn db_name() -> &'static str {
+    ///        "Place"
+    ///    }
+    /// }
+    ///
+    /// fn main() -> Result<(), failure::Error> {
+    ///     let mut storage = Storage::new("/tmp/db")?;
+    ///     let query = storage.query::<Place>()?;
+    ///     
+    ///     for place in query {
+    ///         println!("{}", place.name);
+    ///     }
+    ///
+    ///     Ok(())
+    /// }
+    /// ```
     pub fn query<'txn, T: Record>(&mut self) -> Result<RoQuery<T>, lmdb::Error> {
         let db = self.db(T::db_name())?;
         let txn = self.env.begin_ro_txn()?;
@@ -215,6 +321,41 @@ impl Storage {
         })
     }
 
+    /// Returns the first record that matches a predicate
+    ///
+    /// # Examples
+    /// ```
+    /// use nostalgia::{Storage, record::Record};
+    /// use serde::{Serialize, Deserialize};
+    ///
+    /// #[derive(Serialize, Deserialize)]
+    /// struct Place {
+    ///   id: usize,
+    ///   name: std::string::String
+    /// }
+    ///
+    /// impl Record for Place {
+    ///    fn key(&self) -> Vec<u8> {
+    ///        self.id.to_be_bytes().to_vec()
+    ///    }
+    ///
+    ///    fn db_name() -> &'static str {
+    ///        "Place"
+    ///    }
+    /// }
+    ///
+    /// fn main() -> Result<(), failure::Error> {
+    ///     let mut storage = Storage::new("/tmp/db")?;
+    ///
+    ///     let place = storage.find::<Place>(&|p| p.name == "Istanbul")?;
+    ///     if let Some(istanbul) = place {
+    ///         assert_eq!(istanbul.name, "Istanbul");
+    ///     } else {
+    ///         assert_ne!(0, 0, "Could not find record");
+    ///     }
+    ///    
+    ///     Ok(())
+    /// }
     pub fn find<T: Record>(&mut self, p: &dyn Fn(&T) -> bool) -> Result<Option<T>, lmdb::Error> {
         let mut query = self.query::<T>()?;
         Ok(query.find(p))
@@ -333,12 +474,5 @@ mod tests {
         }
 
         assert_eq!(records_to_create, cnt);
-
-        let pi = storage.query::<Person>().unwrap();
-        let x = pi.filter(|i| i.name == "Jerry");
-
-        for y in x {
-            println!("{:?}", y);
-        }
     }
 }
