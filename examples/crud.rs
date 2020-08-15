@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 enum Party {
     Democrat,
     Republican,
+    NoAffiliation,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -52,7 +53,7 @@ fn main() {
         .enumerate()
         .map(|(idx, m)| Mayor {
             id: idx,
-            name: String::from(m.0),
+            name: m.0.to_string(),
             party: m.1.clone(),
         })
         .collect();
@@ -65,10 +66,57 @@ fn main() {
         .save_batch(mayors)
         .expect("Could not save records in batch");
 
-    let query = storage.query::<Mayor>().unwrap();
-    let republicans = query.filter(|i| i.party == Party::Republican);
+    // Query for all republicans.
+    // We can use rust's standard filter function to query by record properties
+    list_all_mayors(Party::Republican, &mut storage);
 
-    for republican in republicans {
-        println!("{:?}", republican);
+    // Query for all democrats.
+    // We can use rust's standard filter function to query by record properties
+    list_all_mayors(Party::Democrat, &mut storage);
+
+    // During his second term, Michael Bloomberg switched from being formally recognized as a
+    // republican to no party affiliation.  Let's update his record to reflect that.
+    let mut bloomberg = storage
+        .find::<Mayor>(&|r| r.name == "Michael Bloomberg")
+        .expect("Could not execute find")
+        .expect("Could not find mayor");
+
+    println!("\n\n================================================");
+    println!(
+        "{} started his first term as a {:?}",
+        bloomberg.name, bloomberg.party
+    );
+    println!("Changing affiliation to: {:?}", Party::NoAffiliation);
+    bloomberg.party = Party::NoAffiliation;
+
+    storage.save(&bloomberg).expect("Could not update record");
+
+    list_all_mayors(Party::NoAffiliation, &mut storage);
+    list_all_mayors(Party::Republican, &mut storage);
+
+    println!("\n\n================================================");
+    println!("Warren Wilhelm Jr. is the real name of mayor Bill DeBlasio (Look it up)");
+    println!("We already showed how to update a record, so rather than showing how to change his name, let's just delete him");
+
+    let wwjr: Mayor = storage
+        .get(&16_usize.to_be_bytes().to_vec())
+        .expect("Could not find DeBlasio.  Check Brooklyn")
+        .unwrap();
+
+    storage
+        .delete(&wwjr)
+        .expect("I can't believe we STILL can't get rid of him");
+
+    list_all_mayors(Party::Democrat, &mut storage);
+}
+
+fn list_all_mayors(with_affiliation: Party, storage: &mut Storage) {
+    let query = storage.query::<Mayor>().expect("Could not build a query");
+    let mayors = query.filter(|i| i.party == with_affiliation);
+
+    println!("\n\nList of {:?} New York City Mayors", with_affiliation);
+    println!("================================================");
+    for mayor in mayors {
+        println!("{}: {}", mayor.id, mayor.name);
     }
 }

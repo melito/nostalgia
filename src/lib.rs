@@ -14,6 +14,7 @@ use record::Record;
 /// Storage provides a simple interface for interacting with databases
 pub struct Storage {
     env: Environment,
+    #[allow(dead_code)]
     path: PathBuf,
     dbs: HashMap<&'static str, lmdb::Database>,
 }
@@ -118,11 +119,9 @@ impl Storage {
     ///
     pub fn save<T: Record>(&mut self, record: &T) -> Result<(), lmdb::Error> {
         let db = self.db(T::db_name())?;
-
         let mut tx = self.env.begin_rw_txn()?;
         let bytes = T::to_binary(record).expect("Could not serialize");
         tx.put(db, &record.key(), &bytes, lmdb::WriteFlags::empty())?;
-
         tx.commit()
     }
 
@@ -196,18 +195,29 @@ impl Storage {
         }
     }
 
+    pub fn delete<T: Record>(&mut self, record: &T) -> Result<(), lmdb::Error> {
+        let db = self.db(T::db_name())?;
+        let mut tx = self.env.begin_rw_txn()?;
+        tx.del(db, &record.key(), None)?;
+        tx.commit()
+    }
+
     /// Performs a query on the database and returns an iterator for accessing results
     pub fn query<'txn, T: Record>(&mut self) -> Result<RoQuery<T>, lmdb::Error> {
         let db = self.db(T::db_name())?;
-
         let txn = self.env.begin_ro_txn()?;
 
         Ok(RoQuery {
             phantom: std::marker::PhantomData::<T>,
-            db: db,
-            txn: txn,
+            db,
+            txn,
             iter: None,
         })
+    }
+
+    pub fn find<T: Record>(&mut self, p: &dyn Fn(&T) -> bool) -> Result<Option<T>, lmdb::Error> {
+        let mut query = self.query::<T>()?;
+        Ok(query.find(p))
     }
 
     /// Removes all records in the corresponding type's database

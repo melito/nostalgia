@@ -9,7 +9,7 @@ pub struct RoQuery<'txn, T> {
 }
 
 impl<'txn, T: 'txn + Record> RoQuery<'txn, T> {
-    pub fn new(db: lmdb::Database, txn: lmdb::RoTransaction<'txn>) -> Self {
+    pub fn new(db: lmdb::Database, txn: lmdb::RoTransaction<'txn>) -> RoQuery<'txn, T> {
         RoQuery {
             phantom: std::marker::PhantomData::<T>,
             db: db,
