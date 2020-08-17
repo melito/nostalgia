@@ -1,5 +1,4 @@
 use failure::Error;
-use lmdb;
 use lmdb::{Cursor, Database, Environment, Transaction};
 use std::collections::HashMap;
 use std::fs::create_dir_all;
@@ -306,7 +305,7 @@ impl Storage {
     ///     Ok(())
     /// }
     /// ```
-    pub fn query<'txn, T: Record>(&mut self) -> Result<RoQuery<T>, lmdb::Error> {
+    pub fn query<T: Record>(&mut self) -> Result<RoQuery<T>, lmdb::Error> {
         let db = self.db(T::db_name())?;
         let txn = self.env.begin_ro_txn()?;
 
