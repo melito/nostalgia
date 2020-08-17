@@ -1,4 +1,4 @@
-use nostalgia::{record::Record, Storage};
+use nostalgia::{Record, Storage};
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
