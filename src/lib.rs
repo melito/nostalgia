@@ -5,3 +5,4 @@ mod storage;
 use query::RoQuery;
 pub use record::Record;
 pub use storage::Storage;
+pub use storage::UInt32;

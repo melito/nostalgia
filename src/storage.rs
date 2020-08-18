@@ -117,7 +117,7 @@ impl Storage {
         let db = self.db(T::db_name())?;
         let mut tx = self.env.begin_rw_txn()?;
         let bytes = T::to_binary(record).expect("Could not serialize");
-        tx.put(db, &record.key(), &bytes, lmdb::WriteFlags::empty())?;
+        tx.put(db, &record.key().into(), &bytes, lmdb::WriteFlags::empty())?;
         tx.commit()
     }
 
@@ -171,7 +171,7 @@ impl Storage {
 
         for record in records {
             let bytes = T::to_binary(&record).expect("Could not serialize");
-            tx.put(db, &record.key(), &bytes, lmdb::WriteFlags::empty())?;
+            tx.put(db, &record.key().into(), &bytes, lmdb::WriteFlags::empty())?;
         }
 
         tx.commit()
@@ -216,11 +216,11 @@ impl Storage {
     ///     Ok(())
     /// }
     /// ```
-    pub fn get<T: Record>(&mut self, key: &[u8]) -> Result<Option<T>, lmdb::Error> {
+    pub fn get<T: Record>(&mut self, key: T::Key) -> Result<Option<T>, lmdb::Error> {
         let db = self.db(T::db_name())?;
         let txn = self.env.begin_ro_txn()?;
         let cursor = txn.open_ro_cursor(db)?;
-        let result = cursor.get(Some(key), None, 15)?;
+        let result = cursor.get(Some(&key.into()), None, 15)?;
 
         match T::from_binary(result.1) {
             Ok(record) => Ok(Some(record)),
@@ -267,7 +267,7 @@ impl Storage {
     pub fn delete<T: Record>(&mut self, record: &T) -> Result<(), lmdb::Error> {
         let db = self.db(T::db_name())?;
         let mut tx = self.env.begin_rw_txn()?;
-        tx.del(db, &record.key(), None)?;
+        tx.del(db, &record.key().into(), None)?;
         tx.commit()
     }
 
@@ -380,6 +380,22 @@ impl Storage {
     }
 }
 
+use serde::{Deserialize, Serialize};
+#[derive(Serialize, Deserialize, Debug, Clone, Copy)]
+pub struct UInt32(u32);
+
+impl UInt32 {
+    pub fn new(input: u32) -> Self {
+        UInt32 { 0: input }
+    }
+}
+
+impl std::convert::Into<Vec<u8>> for UInt32 {
+    fn into(self) -> Vec<u8> {
+        self.0.to_be_bytes().to_vec()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -397,8 +413,10 @@ mod tests {
     }
 
     impl Record for Person {
-        fn key(&self) -> Vec<u8> {
-            self.id.to_be_bytes().to_vec()
+        type Key = UInt32;
+
+        fn key(&self) -> UInt32 {
+            UInt32(self.id)
         }
 
         fn db_name() -> &'static str {
@@ -438,13 +456,14 @@ mod tests {
         assert_eq!("Person", Person::db_name());
 
         let _ = storage.save(&person).expect("Could not save record");
-        let p = storage.get::<Person>(&person.key());
+        let key = person.key();
+        /*let p = storage.get::<Person>(key.as_ref());
 
         match p {
             Ok(Some(pn)) => assert_eq!(pn, person),
             Ok(None) => assert_ne!(0, 0, "Didn't get a result back"),
             Err(_) => assert_ne!(0, 0, "Got an error"),
-        };
+        };*/
     }
 
     #[test]
@@ -470,5 +489,7 @@ mod tests {
         }
 
         assert_eq!(records_to_create, cnt);
+
+        //let x = storage.get(UInt32(100));
     }
 }

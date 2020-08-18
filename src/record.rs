@@ -1,7 +1,9 @@
 /// When a type conforms to this trait it allows it to be stored and retrieved from the database
 pub trait Record: serde::Serialize + serde::de::DeserializeOwned + std::marker::Sized {
+    type Key: std::convert::Into<Vec<u8>>;
+
     /// Used to determine the key to use to associate with the object in the database
-    fn key(&self) -> Vec<u8>;
+    fn key(&self) -> Self::Key;
 
     /// The database name to save a record in.  Defaults to 'default'
     fn db_name() -> &'static str {
