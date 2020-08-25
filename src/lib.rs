@@ -3,6 +3,5 @@ mod record;
 mod storage;
 
 use query::RoQuery;
-pub use record::Record;
+pub use record::{Key, Record};
 pub use storage::Storage;
-pub use storage::UInt32;

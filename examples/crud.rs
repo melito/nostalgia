@@ -1,4 +1,4 @@
-use nostalgia::{Record, Storage, UInt32};
+use nostalgia::{Key, Record, Storage};
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
@@ -10,16 +10,16 @@ enum Party {
 
 #[derive(Serialize, Deserialize, Debug)]
 struct Mayor {
-    id: UInt32,
+    id: u32,
     name: std::string::String,
     party: Party,
 }
 
 impl Record for Mayor {
-    type Key = UInt32;
+    type Key = Key<u32>;
 
-    fn key(&self) -> UInt32 {
-        self.id
+    fn key(&self) -> Key<u32> {
+        Key::from(self.id)
     }
 
     fn db_name() -> &'static str {
@@ -54,7 +54,7 @@ fn main() {
         .iter()
         .enumerate()
         .map(|(idx, m)| Mayor {
-            id: UInt32::new(idx as u32),
+            id: idx as u32,
             name: m.0.to_string(),
             party: m.1.clone(),
         })
@@ -101,7 +101,7 @@ fn main() {
     println!("We already showed how to update a record, so rather than showing how to change his name, let's just delete him");
 
     let wwjr: Mayor = storage
-        .get(UInt32::new(16))
+        .get(Key::from(16))
         .expect("Could not find DeBlasio.  Check Brooklyn")
         .unwrap();
 

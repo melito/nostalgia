@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use std::fs::create_dir_all;
 use std::path::PathBuf;
 
+use crate::Key;
 use crate::Record;
 use crate::RoQuery;
 
@@ -380,22 +381,6 @@ impl Storage {
     }
 }
 
-use serde::{Deserialize, Serialize};
-#[derive(Serialize, Deserialize, Debug, Clone, Copy)]
-pub struct UInt32(u32);
-
-impl UInt32 {
-    pub fn new(input: u32) -> Self {
-        UInt32 { 0: input }
-    }
-}
-
-impl std::convert::Into<Vec<u8>> for UInt32 {
-    fn into(self) -> Vec<u8> {
-        self.0.to_be_bytes().to_vec()
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -413,10 +398,10 @@ mod tests {
     }
 
     impl Record for Person {
-        type Key = UInt32;
+        type Key = Key<u32>;
 
-        fn key(&self) -> UInt32 {
-            UInt32(self.id)
+        fn key(&self) -> Key<u32> {
+            Key::from(self.id)
         }
 
         fn db_name() -> &'static str {
@@ -456,14 +441,13 @@ mod tests {
         assert_eq!("Person", Person::db_name());
 
         let _ = storage.save(&person).expect("Could not save record");
-        let key = person.key();
-        /*let p = storage.get::<Person>(key.as_ref());
+        let p = storage.get::<Person>(person.key().into());
 
         match p {
             Ok(Some(pn)) => assert_eq!(pn, person),
             Ok(None) => assert_ne!(0, 0, "Didn't get a result back"),
             Err(_) => assert_ne!(0, 0, "Got an error"),
-        };*/
+        };
     }
 
     #[test]
@@ -489,7 +473,5 @@ mod tests {
         }
 
         assert_eq!(records_to_create, cnt);
-
-        //let x = storage.get(UInt32(100));
     }
 }
