@@ -101,7 +101,7 @@ fn main() {
     println!("We already showed how to update a record, so rather than showing how to change his name, let's just delete him");
 
     let wwjr: Mayor = storage
-        .get(Key::from(16))
+        .get(16)
         .expect("Could not find DeBlasio.  Check Brooklyn")
         .unwrap();
 

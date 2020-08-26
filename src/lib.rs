@@ -4,4 +4,4 @@ mod storage;
 
 use query::RoQuery;
 pub use record::{Key, Record};
-pub use storage::Storage;
+pub use storage::{Error, Storage};

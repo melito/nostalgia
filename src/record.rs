@@ -101,6 +101,19 @@ mod tests {
         }
     }
 
+    #[derive(Serialize, Deserialize)]
+    struct AnotherThing {
+        id: u32,
+    }
+
+    impl Record for AnotherThing {
+        type Key = Key<u32>;
+
+        fn key(&self) -> Self::Key {
+            Key::from(self.id)
+        }
+    }
+
     // A dummy function that ensures things compile
     fn get<T: Record>(_key: T::Key) {}
 
