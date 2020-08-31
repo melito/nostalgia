@@ -1,4 +1,4 @@
-use nostalgia::{Record, Storage};
+use nostalgia::{Key, Record, Storage};
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
@@ -10,14 +10,16 @@ enum Party {
 
 #[derive(Serialize, Deserialize, Debug)]
 struct Mayor {
-    id: usize,
+    id: u32,
     name: std::string::String,
     party: Party,
 }
 
 impl Record for Mayor {
-    fn key(&self) -> Vec<u8> {
-        self.id.to_be_bytes().to_vec()
+    type Key = Key<u32>;
+
+    fn key(&self) -> Key<u32> {
+        Key::from(self.id)
     }
 
     fn db_name() -> &'static str {
@@ -52,7 +54,7 @@ fn main() {
         .iter()
         .enumerate()
         .map(|(idx, m)| Mayor {
-            id: idx,
+            id: idx as u32,
             name: m.0.to_string(),
             party: m.1.clone(),
         })
@@ -99,7 +101,7 @@ fn main() {
     println!("We already showed how to update a record, so rather than showing how to change his name, let's just delete him");
 
     let wwjr: Mayor = storage
-        .get(&16_usize.to_be_bytes().to_vec())
+        .get(16)
         .expect("Could not find DeBlasio.  Check Brooklyn")
         .unwrap();
 
@@ -117,6 +119,6 @@ fn list_all_mayors(with_affiliation: Party, storage: &mut Storage) {
     println!("\n\nList of {:?} New York City Mayors", with_affiliation);
     println!("================================================");
     for mayor in mayors {
-        println!("{}: {}", mayor.id, mayor.name);
+        println!("{:?}: {}", mayor.id, mayor.name);
     }
 }

@@ -1,32 +1,3 @@
-use std::convert::{From, Into};
-use std::marker::Sized;
-use std::string::String;
-
-use serde::{de::DeserializeOwned, Serialize};
-
-/// When a type conforms to this trait it allows it to be stored and retrieved from the database
-pub trait Record: Serialize + DeserializeOwned + Sized {
-    type Key: Into<Vec<u8>>;
-
-    /// Used to determine the key to use to associate with the object in the database
-    fn key(&self) -> Self::Key;
-
-    /// The database name to save a record in.  Defaults to 'default'
-    fn db_name() -> &'static str {
-        "default"
-    }
-
-    /// Serializes the record to binary
-    fn to_binary(&self) -> Result<Vec<u8>, bincode::Error> {
-        bincode::serialize(self)
-    }
-
-    /// Deserializes a record from binary
-    fn from_binary(bytes: &[u8]) -> Result<Self, bincode::Error> {
-        bincode::deserialize(bytes)
-    }
-}
-
 // A struct to wrap any sized type that could be used as a key
 pub struct Key<T: Sized>(T);
 
@@ -72,6 +43,7 @@ impl Into<Vec<u8>> for Key<&str> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::Record;
     use serde::{Deserialize, Serialize};
 
     #[derive(Serialize, Deserialize)]
