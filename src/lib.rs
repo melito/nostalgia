@@ -1,3 +1,6 @@
+#[macro_use]
+extern crate nostalgia_derive;
+
 mod key;
 mod query;
 mod record;
