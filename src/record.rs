@@ -50,5 +50,7 @@ mod tests {
         };
 
         storage.save(&thing).expect("Could not save record");
+
+        assert_eq!("Thing", Thing::db_name());
     }
 }

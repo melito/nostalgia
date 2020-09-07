@@ -9,16 +9,19 @@ pub fn storable_macro(input: proc_macro::TokenStream) -> proc_macro::TokenStream
     let input = parse_macro_input!(input as DeriveInput);
 
     let name = input.ident;
+    let name_str = name.to_string();
     let key_definition = find_key_name_and_type(&input.attrs, &input.data);
 
     // Build the output, possibly using quasi-quotation
     let expanded = quote! {
         impl Record for #name {
             #key_definition
+
+            fn db_name() -> &'static str {
+                #name_str
+            }
         }
     };
-
-    dbg!(expanded.clone().to_string());
 
     // Hand the output tokens back to the compiler
     proc_macro::TokenStream::from(expanded)
