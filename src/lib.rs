@@ -9,4 +9,4 @@ mod storage;
 pub use key::Key;
 use query::RoQuery;
 pub use record::Record;
-pub use storage::{Error, Storage};
+pub use storage::{Storage, StorageError};
