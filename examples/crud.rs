@@ -1,3 +1,6 @@
+#[macro_use]
+extern crate nostalgia_derive;
+
 use nostalgia::{Key, Record, Storage};
 use serde::{Deserialize, Serialize};
 
@@ -8,23 +11,12 @@ enum Party {
     NoAffiliation,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Storable, Serialize, Deserialize, Debug)]
+#[key = "id"]
 struct Mayor {
     id: u32,
     name: std::string::String,
     party: Party,
-}
-
-impl Record for Mayor {
-    type Key = Key<u32>;
-
-    fn key(&self) -> Key<u32> {
-        Key::from(self.id)
-    }
-
-    fn db_name() -> &'static str {
-        "Mayors"
-    }
 }
 
 fn main() {
