@@ -27,6 +27,9 @@ pub fn storable_macro(input: proc_macro::TokenStream) -> proc_macro::TokenStream
     proc_macro::TokenStream::from(expanded)
 }
 
+// Builds up a HashMap of the key/value pairs set in the attributes
+// For example if you pass #[key = 'id'] as an attribute with the macro this will return
+// {"key": "id"}
 fn find_attr_keypairs(attrs: &Vec<syn::Attribute>) -> HashMap<String, String> {
     let mut result = HashMap::new();
     for attr in attrs {
