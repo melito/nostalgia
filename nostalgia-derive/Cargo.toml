@@ -15,3 +15,5 @@ proc-macro2 = "1.0.19"
 
 [dev-dependencies]
 trybuild = "1.0.32"
+nostalgia = { path = "../" }
+serde = { version = "1.0", features = ["derive"] } 
