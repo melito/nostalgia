@@ -11,6 +11,7 @@ pub fn storable_macro(input: proc_macro::TokenStream) -> proc_macro::TokenStream
     let name = input.ident;
     let name_str = name.to_string();
     let key_definition = find_key_name_and_type(&input.attrs, &input.data);
+    println!("{:#?}", input.attrs);
 
     // Build the output, possibly using quasi-quotation
     let expanded = quote! {
