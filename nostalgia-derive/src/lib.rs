@@ -11,7 +11,6 @@ pub fn storable_macro(input: proc_macro::TokenStream) -> proc_macro::TokenStream
     let name = input.ident;
     let name_str = name.to_string();
     let key_definition = find_key_name_and_type(&input.attrs, &input.data);
-    println!("{:#?}", input.attrs);
 
     // Build the output, possibly using quasi-quotation
     let expanded = quote! {
@@ -28,16 +27,13 @@ pub fn storable_macro(input: proc_macro::TokenStream) -> proc_macro::TokenStream
     proc_macro::TokenStream::from(expanded)
 }
 
-// Builds up a HashMap of the key/value pairs set in the attributes
-// For example if you pass #[key = 'id'] as an attribute with the macro this will return
-// {"key": "id"}
-fn find_attr_keypairs(attrs: &Vec<syn::Attribute>) -> HashMap<String, String> {
+fn find_attr_keypairs(attrs: &Vec<syn::Attribute>) -> HashMap<String, syn::LitStr> {
     let mut result = HashMap::new();
     for attr in attrs {
         match attr.parse_meta().unwrap() {
             NameValue(nm) => match (nm.path.get_ident(), nm.lit) {
                 (Some(ident), syn::Lit::Str(s)) => {
-                    result.insert(ident.to_string(), s.value());
+                    result.insert(ident.to_string(), s);
                 }
                 _ => unimplemented!(),
             },
@@ -50,44 +46,53 @@ fn find_attr_keypairs(attrs: &Vec<syn::Attribute>) -> HashMap<String, String> {
 
 fn find_key_name_and_type(attrs: &Vec<syn::Attribute>, data: &syn::Data) -> TokenStream {
     let key_values = find_attr_keypairs(attrs);
+    let fuck = find_attr_keypairs(attrs);
     match *data {
         Data::Struct(ref data) => match data.fields {
             syn::Fields::Named(ref fields) => {
-                // Find the key field
-                // Iterate over each of the fields in the struct and look for one named the same as
-                // the argument passed to the key attr
-                let key_field = fields
-                    .named
-                    .iter()
-                    .find(|f| {
-                        let name = &f.ident;
-                        if let Some(n) = name {
-                            if n.to_string() == key_values["key"] {
-                                false;
+                if let Some(key_field) = find_key_name_in_struct(fields, key_values) {
+                    match (key_field.ident.as_ref(), key_field.ty.clone()) {
+                        (Some(ident), syn::Type::Path(type_path)) => {
+                            let prop = ident;
+                            let prop_type = type_path.path.get_ident().unwrap();
+
+                            quote! {
+                                type Key = Key<#prop_type>;
+
+                                fn key(&self) -> Self::Key {
+                                    Key::from(self.#prop)
+                                }
                             }
                         }
-                        true
-                    })
-                    .unwrap();
-
-                match (key_field.ident.as_ref(), key_field.ty.clone()) {
-                    (Some(ident), syn::Type::Path(type_path)) => {
-                        let prop = ident;
-                        let prop_type = type_path.path.get_ident().unwrap();
-
-                        quote! {
-                            type Key = Key<#prop_type>;
-
-                            fn key(&self) -> Self::Key {
-                                Key::from(self.#prop)
-                            }
-                        }
+                        _ => unimplemented!(),
                     }
-                    _ => unimplemented!(),
+                } else {
+                    let id = &fuck["key"];
+
+                    return syn::Error::new(id.span(), "This field does not exist on the type")
+                        .to_compile_error();
                 }
             }
             _ => unimplemented!(),
         },
         Data::Enum(_) | Data::Union(_) => unimplemented!(),
     }
+}
+
+// Find the key field
+// Iterate over each of the fields in the struct and look for one named the same as
+// the argument passed to the key attr
+fn find_key_name_in_struct(
+    target_fields: &syn::FieldsNamed,
+    config: HashMap<String, syn::LitStr>,
+) -> Option<&syn::Field> {
+    target_fields.named.iter().find(|f| {
+        let name = &f.ident;
+        if let Some(n) = name {
+            if n.to_string() == config["key"].value() {
+                return true;
+            }
+        }
+        return false;
+    })
 }
