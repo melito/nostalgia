@@ -1,0 +1,23 @@
+error: This field does not exist on the type
+ --> $DIR/key-tests-assign-id-nonexist-fail.rs:6:9
+  |
+6 | #[key = "nothere"]
+  |         ^^^^^^^^^
+
+warning: unused import: `Key`
+ --> $DIR/key-tests-assign-id-nonexist-fail.rs:1:17
+  |
+1 | use nostalgia::{Key, Record};
+  |                 ^^^
+  |
+  = note: `#[warn(unused_imports)]` on by default
+
+error[E0046]: not all trait items implemented, missing: `Key`, `key`
+ --> $DIR/key-tests-assign-id-nonexist-fail.rs:5:10
+  |
+5 | #[derive(Storable, Serialize, Deserialize)]
+  |          ^^^^^^^^ missing `Key`, `key` in implementation
+  |
+  = note: this error originates in a derive macro (in Nightly builds, run with -Z macro-backtrace for more info)
+  = help: implement the missing item: `type Key = Type;`
+  = help: implement the missing item: `fn key(&self) -> <Self as nostalgia::Record>::Key { todo!() }`
