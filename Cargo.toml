@@ -5,6 +5,8 @@ authors = ["Mel Gray <melgray@gmail.com>"]
 edition = "2018"
 license = "MIT"
 description = "A simple wrapper for lmdb to allow for some syntactic sugar"
+homepage = "https://github.com/melito/nostalgia"
+repository = "https://github.com/melito/nostalgia"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
