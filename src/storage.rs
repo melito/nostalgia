@@ -15,6 +15,7 @@ pub struct Storage {
     dbs: HashMap<&'static str, lmdb::Database>,
 }
 
+/// Errors that can arise from interacting with Storage
 #[derive(Error, Debug)]
 pub enum StorageError {
     #[error("could not access database directory")]

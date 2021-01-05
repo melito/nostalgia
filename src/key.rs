@@ -1,4 +1,4 @@
-// A struct to wrap any sized type that could be used as a key
+/// A struct to wrap any sized type that could be used as a key
 pub struct Key<T: Sized>(T);
 
 // Implement From for any Sized type and wrap it in a Key struct
